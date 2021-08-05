@@ -20,7 +20,7 @@ import org.http4s.circe.CirceEntityEncoder._
 import cats.effect.kernel.Ref
 object Main extends IOApp {
 
-  def httpService(ref: Ref[IO, Map[String, Int]]) =
+  def httpService(ref: Ref[IO, Map[String, Map[String, Int]]]) =
     BlazeServerBuilder[IO](this.runtime.compute)
       .bindHttp(8080, "localhost")
       .withHttpApp(
@@ -32,7 +32,7 @@ object Main extends IOApp {
       )
       .serve
 
-  def processStream(path: String, ref: Ref[IO, Map[String, Int]]) =
+  def processStream(path: String, ref: Ref[IO, Map[String, Map[String, Int]]]) =
     readOutputStream[IO](10)(outputStream => IO(path.#>(outputStream).!))
       .through(fs2.text.utf8Decode)
       .through(fs2.text.lines)
@@ -40,14 +40,14 @@ object Main extends IOApp {
       .collect { case Right(json) => json.asObject }
       .collect { case Some(obj) => (obj("event_type"), obj("data")).tupled }
       .collect { case Some((typeJson, dataJson)) => (typeJson.asString, dataJson.asString).tupled }
-      .collect { case Some((eventType, data)) => Map(eventType -> data.split("\\s+").size) }
+      .collect { case Some((eventType, data)) => Map(eventType ->  Map(data -> 1)) }
       .groupWithin(Int.MaxValue, 10.seconds)
       .map(_.fold)
       .evalMap(ref.set)
 
   def app(path: String) =
     Ref
-      .of[IO, Map[String, Int]](Map())
+      .of[IO, Map[String, Map[String, Int]]](Map())
       .flatMap(ref =>
         processStream(path, ref)
           .concurrently(httpService(ref))
